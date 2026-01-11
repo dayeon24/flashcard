@@ -46,6 +46,31 @@
     position: relative; 
     margin: 0 60px; /* 좌우 여백 */
   }
+  
+  /* 섞기 버튼 (테이블 왼쪽 상단) */
+  .shuffle-btn {
+    position: absolute;
+    left: -59px;
+    top: 0;
+    width: 60px;
+    height: 45.5px; /* 헤더 높이와 맞춤 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-blue-light);
+    border: 1px solid var(--primary-blue) !important;
+    border-right: none;
+    border-radius: 6px 0 0 0;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--primary-blue);
+    padding: 0;
+  }
+  
+  .shuffle-btn:hover {
+    background: var(--primary-blue);
+    color: white;
+  }
 
   table { 
     width: 100%; 
@@ -59,6 +84,20 @@
   tbody tr { 
     position: relative;
     height: 60px;
+    cursor: move;
+    transition: background-color 0.2s;
+  }
+  
+  tbody tr:hover {
+    background-color: rgba(109, 167, 242, 0.05);
+  }
+  
+  tbody tr.dragging {
+    opacity: 0.5;
+  }
+  
+  tbody tr.drag-over {
+    border-top: 3px solid var(--primary-blue);
   }
 
   td { 
@@ -169,6 +208,9 @@
 </div>
 
 <div class="table-container">
+  <button class="shuffle-btn" onclick="shuffleRows()" title="카드 섞기">
+    <i class="bi bi-shuffle"></i>
+  </button>
   <table>
     <thead>
       <tr>
@@ -236,6 +278,14 @@ function renderTable() {
 
   cardData.forEach((item, idx) => {
     const tr = document.createElement('tr');
+    tr.draggable = true;
+    tr.dataset.index = idx;
+    
+    // 드래그 이벤트 리스너
+    tr.addEventListener('dragstart', handleDragStart);
+    tr.addEventListener('dragover', handleDragOver);
+    tr.addEventListener('drop', handleDrop);
+    tr.addEventListener('dragend', handleDragEnd);
     
     const sClass = currentMode === 2 ? 'hidden' : '';
     const mClass = currentMode === 1 ? 'hidden' : '';
@@ -310,6 +360,50 @@ function importCSV(event) {
     }
   };
   reader.readAsText(file);
+}
+
+// 드래그 앤 드롭 관련 함수
+let draggedIndex = null;
+
+function handleDragStart(e) {
+  draggedIndex = parseInt(e.currentTarget.dataset.index);
+  e.currentTarget.classList.add('dragging');
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  const afterElement = e.currentTarget;
+  afterElement.classList.add('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const dropIndex = parseInt(e.currentTarget.dataset.index);
+  
+  if (draggedIndex !== null && draggedIndex !== dropIndex) {
+    const draggedItem = cardData[draggedIndex];
+    cardData.splice(draggedIndex, 1);
+    cardData.splice(dropIndex, 0, draggedItem);
+    save();
+  }
+}
+
+function handleDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('tbody tr').forEach(tr => {
+    tr.classList.remove('drag-over');
+  });
+  draggedIndex = null;
+}
+
+function shuffleRows() {
+  if (!confirm('카드 순서를 무작위로 섞을까요?')) return;
+  
+  for (let i = cardData.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cardData[i], cardData[j]] = [cardData[j], cardData[i]];
+  }
+  save();
 }
 </script>
 
