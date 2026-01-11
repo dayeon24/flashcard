@@ -1,62 +1,120 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
 <meta charset="UTF-8">
 <title>English Flashcards</title>
 <style>
+  :root {
+    --primary-color: #6DA7F2;
+    --bg-light: rgba(109, 167, 242, 0.1);
+  }
+
   body {
-    font-family: Arial, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     padding: 30px;
-    max-width: 700px;
+    max-width: 800px;
     margin: auto;
+    color: #333;
   }
 
   h1 {
     text-align: center;
+    color: var(--primary-color);
   }
 
-  .controls button {
-    margin: 5px;
-    padding: 8px 12px;
+  /* 버튼 및 컨트롤 스타일 */
+  .controls {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  button {
+    border: 1px solid var(--primary-color);
+    background-color: white;
+    color: var(--primary-color);
+    padding: 8px 16px;
     cursor: pointer;
+    border-radius: 4px;
+    transition: 0.3s;
+    font-weight: bold;
+  }
+
+  button:hover {
+    background-color: var(--bg-light);
   }
 
   .input-row {
     display: flex;
     gap: 10px;
-    margin: 15px 0;
+    margin-bottom: 25px;
   }
 
   input {
     flex: 1;
-    padding: 8px;
+    padding: 10px;
+    border: 1px solid var(--primary-color);
+    border-radius: 4px;
+    outline: none;
   }
 
+  /* 테이블 스타일 */
   table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 15px;
+    border: 1px solid var(--primary-color);
   }
 
-  th, td {
-    border: 1px solid #ddd;
+  th {
+    background-color: var(--bg-light);
+    border: 1px solid var(--primary-color);
+    padding: 12px;
+  }
+
+  td {
+    border: 1px solid var(--primary-color);
     padding: 10px;
     text-align: center;
-  }
-
-  .hidden {
-    background: #eee;
-    color: transparent;
-    cursor: pointer;
     position: relative;
   }
 
+  /* 가리기 스타일 */
+  .hidden {
+    background-color: #f9f9f9;
+    color: transparent !important;
+    cursor: pointer;
+  }
   .hidden::after {
-    content: "👁";
-    color: black;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    content: "클릭해서 보기";
+    color: #aaa;
+    font-size: 0.8em;
+  }
+
+  /* 액션 아이콘 스타일 */
+  .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .icon-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 2px;
+    color: var(--primary-color);
+  }
+
+  .icon-btn:hover {
+    transform: scale(1.2);
+    background: none;
+  }
+
+  .csv-btn {
+    margin-top: 20px;
+    background-color: var(--bg-light);
   }
 </style>
 </head>
@@ -65,77 +123,141 @@
 <h1>English Flashcards</h1>
 
 <div class="controls">
-  <button onclick="showMode('both')">둘 다 보기</button>
-  <button onclick="showMode('sentence')">문장만 보기</button>
-  <button onclick="showMode('meaning')">뜻만 보기</button>
+  <button id="modeToggleBtn" onclick="rotateMode()">모드 변경: 둘 다 보기</button>
 </div>
 
 <div class="input-row">
   <input id="sentenceInput" placeholder="영어 문장">
   <input id="meaningInput" placeholder="뜻">
-  <button onclick="addRow()">추가</button>
+  <button onclick="addRow()">등록</button>
 </div>
 
 <table>
   <thead>
     <tr>
-      <th>문장</th>
-      <th>뜻</th>
+      <th style="width: 40%;">문장</th>
+      <th style="width: 40%;">뜻</th>
+      <th style="width: 10%;">관리</th>
     </tr>
   </thead>
   <tbody id="tableBody"></tbody>
 </table>
 
-<script>
-let mode = "both";
+<div style="text-align: right;">
+  <button class="csv-btn" onclick="exportToCSV()">CSV 파일로 저장(다운로드)</button>
+</div>
 
+<script>
+let modeIndex = 0;
+const modes = ["both", "sentence", "meaning"];
+const modeLabels = ["둘 다 보기", "문장만 보기", "뜻만 보기"];
+
+// 데이터 배열 (로컬 저장소에서 불러옴)
+let cardData = JSON.parse(localStorage.getItem('flashcards')) || [];
+
+// 초기 로드
+window.onload = () => {
+  renderTable();
+};
+
+// 모드 전환 함수
+function rotateMode() {
+  modeIndex = (modeIndex + 1) % modes.length;
+  document.getElementById('modeToggleBtn').innerText = `모드 변경: ${modeLabels[modeIndex]}`;
+  renderTable();
+}
+
+// 데이터 추가
 function addRow() {
-  const sentence = sentenceInput.value.trim();
-  const meaning = meaningInput.value.trim();
+  const sentence = document.getElementById('sentenceInput').value.trim();
+  const meaning = document.getElementById('meaningInput').value.trim();
 
   if (!sentence || !meaning) {
-    alert("문장과 뜻을 모두 입력하세요.");
+    alert("내용을 입력해주세요.");
     return;
   }
 
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td class="sentence">${sentence}</td>
-    <td class="meaning">${meaning}</td>
-  `;
-  tableBody.appendChild(tr);
-
-  sentenceInput.value = "";
-  meaningInput.value = "";
-
-  applyMode();
+  cardData.push({ sentence, meaning });
+  saveAndRender();
+  
+  document.getElementById('sentenceInput').value = "";
+  document.getElementById('meaningInput').value = "";
 }
 
-function showMode(newMode) {
-  mode = newMode;
-  applyMode();
+// 데이터 수정
+function editRow(index) {
+  const newSentence = prompt("문장을 수정하세요:", cardData[index].sentence);
+  const newMeaning = prompt("뜻을 수정하세요:", cardData[index].meaning);
+  
+  if (newSentence !== null && newMeaning !== null) {
+    cardData[index] = { sentence: newSentence, meaning: newMeaning };
+    saveAndRender();
+  }
 }
 
-function applyMode() {
-  document.querySelectorAll("tr").forEach(row => {
-    const s = row.querySelector(".sentence");
-    const m = row.querySelector(".meaning");
+// 데이터 삭제
+function deleteRow(index) {
+  if (confirm("정말 삭제하시겠습니까?")) {
+    cardData.splice(index, 1);
+    saveAndRender();
+  }
+}
 
-    if (!s || !m) return;
+// 저장 및 리렌더링
+function saveAndRender() {
+  localStorage.setItem('flashcards', JSON.stringify(cardData));
+  renderTable();
+}
 
-    s.classList.remove("hidden");
-    m.classList.remove("hidden");
+// 테이블 그리기
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = "";
 
-    if (mode === "sentence") {
-      m.classList.add("hidden");
-      m.onclick = () => m.classList.remove("hidden");
-    }
+  cardData.forEach((item, index) => {
+    const tr = document.createElement("tr");
+    
+    const currentMode = modes[modeIndex];
+    const sClass = (currentMode === "meaning") ? "hidden" : "";
+    const mClass = (currentMode === "sentence") ? "hidden" : "";
 
-    if (mode === "meaning") {
-      s.classList.add("hidden");
-      s.onclick = () => s.classList.remove("hidden");
-    }
+    tr.innerHTML = `
+      <td class="${sClass}" onclick="this.classList.remove('hidden')">${item.sentence}</td>
+      <td class="${mClass}" onclick="this.classList.remove('hidden')">${item.meaning}</td>
+      <td>
+        <div class="action-buttons">
+          <button class="icon-btn" onclick="editRow(${index})" title="수정">✎</button>
+          <button class="icon-btn" onclick="deleteRow(${index})" title="삭제">🗑</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
   });
+}
+
+// CSV 내보내기 기능
+function exportToCSV() {
+  if (cardData.length === 0) {
+    alert("저장할 데이터가 없습니다.");
+    return;
+  }
+
+  let csvContent = "\uFEFF"; // UTF-8 BOM (한글 깨짐 방지)
+  csvContent += "Sentence,Meaning\n";
+  
+  cardData.forEach(row => {
+    csvContent += `"${row.sentence}","${row.meaning}"\n`;
+  });
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "flashcards.csv");
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 </script>
 
