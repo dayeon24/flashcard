@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>English Flashcards</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    padding: 30px;
+    max-width: 700px;
+    margin: auto;
+  }
+
+  h1 {
+    text-align: center;
+  }
+
+  .controls button {
+    margin: 5px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+  }
+
+  input {
+    flex: 1;
+    padding: 8px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+  }
+
+  th, td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: center;
+  }
+
+  .hidden {
+    background: #eee;
+    color: transparent;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .hidden::after {
+    content: "👁";
+    color: black;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+</style>
+</head>
+<body>
+
+<h1>English Flashcards</h1>
+
+<div class="controls">
+  <button onclick="showMode('both')">둘 다 보기</button>
+  <button onclick="showMode('sentence')">문장만 보기</button>
+  <button onclick="showMode('meaning')">뜻만 보기</button>
+</div>
+
+<div class="input-row">
+  <input id="sentenceInput" placeholder="영어 문장">
+  <input id="meaningInput" placeholder="뜻">
+  <button onclick="addRow()">추가</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>문장</th>
+      <th>뜻</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+let mode = "both";
+
+function addRow() {
+  const sentence = sentenceInput.value.trim();
+  const meaning = meaningInput.value.trim();
+
+  if (!sentence || !meaning) {
+    alert("문장과 뜻을 모두 입력하세요.");
+    return;
+  }
+
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="sentence">${sentence}</td>
+    <td class="meaning">${meaning}</td>
+  `;
+  tableBody.appendChild(tr);
+
+  sentenceInput.value = "";
+  meaningInput.value = "";
+
+  applyMode();
+}
+
+function showMode(newMode) {
+  mode = newMode;
+  applyMode();
+}
+
+function applyMode() {
+  document.querySelectorAll("tr").forEach(row => {
+    const s = row.querySelector(".sentence");
+    const m = row.querySelector(".meaning");
+
+    if (!s || !m) return;
+
+    s.classList.remove("hidden");
+    m.classList.remove("hidden");
+
+    if (mode === "sentence") {
+      m.classList.add("hidden");
+      m.onclick = () => m.classList.remove("hidden");
+    }
+
+    if (mode === "meaning") {
+      s.classList.add("hidden");
+      s.onclick = () => s.classList.remove("hidden");
+    }
+  });
+}
+</script>
+
+</body>
+</html>
