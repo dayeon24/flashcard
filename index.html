@@ -25,7 +25,7 @@
     border: 1px solid var(--primary-blue) !important;
   }
 
-  .controls { text-align: center; margin-bottom: 20px; }
+  .controls { text-align: center; margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 
   button {
     background-color: var(--bg-blue-light);
@@ -38,21 +38,27 @@
   }
   button:hover { background-color: var(--primary-blue); color: white; }
 
+  .start-btn {
+    background-color: var(--primary-blue);
+    color: white;
+  }
+  .start-btn:hover { background-color: #4d8de0; }
+
   .input-row { display: flex; gap: 10px; margin-bottom: 30px; }
   input { flex: 1; padding: 12px; border-radius: 4px; outline: none; }
 
-  /* 테이블 컨테이너: 좌우 아이콘 공간 확보 */
+  /* 테이블 컨테이너: 좌우 아이콘 공간 확보 (좌측은 북마크+복습일 배지 두 칸 확보) */
   .table-container { 
     position: relative; 
-    margin: 0 60px; /* 좌우 여백 */
+    margin: 0 60px 0 118px;
   }
   
   /* 섞기 버튼 (테이블 왼쪽 상단) */
   .shuffle-btn {
     position: absolute;
-    left: -59px;
+    left: -118px;
     top: 0;
-    width: 60px;
+    width: 118px;
     height: 45.5px; /* 헤더 높이와 맞춤 */
     display: flex;
     align-items: center;
@@ -78,7 +84,18 @@
     table-layout: fixed; 
   }
 
-  th { background-color: var(--bg-blue-light); padding: 12px; }
+  th { background-color: var(--bg-blue-light); padding: 12px; position: relative; }
+
+  .sort-btn {
+    background: none !important;
+    border: none !important;
+    color: var(--primary-blue);
+    font-weight: bold;
+    padding: 0;
+    margin-left: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
   
   /* 행에 상대 위치 부여 */
   tbody tr { 
@@ -130,7 +147,7 @@
   /* 왼쪽 북마크 아이콘 */
   .bookmark-icon {
     position: absolute;
-    left: -60px;
+    left: -118px;
     top: 0;
     bottom: 0;
     width: 50px;
@@ -145,6 +162,25 @@
     font-size: 24px;
     color: var(--bookmark-orange);
   }
+
+  /* 북마크와 문장 사이에 위치하는 복습일 배지 */
+  .due-badge {
+    position: absolute;
+    left: -68px;
+    top: 0;
+    bottom: 0;
+    width: 68px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-blue-light);
+    border: 1px solid var(--primary-blue);
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--primary-blue);
+  }
+  .due-badge.overdue { color: white; background: var(--delete-red); border-color: var(--delete-red); }
+  .due-badge.new { color: white; background: #9e9e9e; border-color: #9e9e9e; }
 
   /* 오른쪽 액션 아이콘 그룹 */
   .action-icons {
@@ -189,6 +225,7 @@
 
 <div class="controls">
   <button id="modeBtn" onclick="rotateMode()">둘 다 보기</button>
+  <button class="start-btn" onclick="startGame()"><i class="bi bi-play-fill"></i> 게임 시작하기</button>
 </div>
 
 <div class="file-ops">
@@ -214,7 +251,7 @@
   <table>
     <thead>
       <tr>
-        <th style="width: 50%;">문장</th>
+        <th style="width: 50%;">문장 <button class="sort-btn" onclick="toggleSort()" id="sortBtn">복습일순 정렬 ▲</button></th>
         <th style="width: 50%;">뜻</th>
       </tr>
     </thead>
@@ -224,13 +261,27 @@
 
 <script>
 let cardData = JSON.parse(localStorage.getItem('flashcards')) || [];
-let currentMode = 0; 
+let currentMode = Number(localStorage.getItem('flashcardMode')) || 0;
 const modeLabels = ["둘 다 보기", "문장만 보기", "뜻만 보기"];
+let sortAsc = true;
 
-window.onload = renderTable;
+window.onload = function() {
+  migrateData();
+  document.getElementById('modeBtn').innerText = modeLabels[currentMode];
+  renderTable();
+};
+
+function migrateData() {
+  cardData.forEach(c => {
+    if (c.interval === undefined) c.interval = null;
+    if (c.dueDate === undefined) c.dueDate = null;
+  });
+  localStorage.setItem('flashcards', JSON.stringify(cardData));
+}
 
 function rotateMode() {
   currentMode = (currentMode + 1) % 3;
+  localStorage.setItem('flashcardMode', currentMode);
   document.getElementById('modeBtn').innerText = `${modeLabels[currentMode]}`;
   renderTable();
 }
@@ -245,7 +296,7 @@ function addRow() {
   const m = document.getElementById('meaningInput').value.trim();
   if(!s || !m) return alert("문장과 뜻을 모두 입력하세요.");
   
-  cardData.push({ s, m, bookmarked: false });
+  cardData.push({ s, m, bookmarked: false, interval: null, dueDate: null });
   document.getElementById('sentenceInput').value = "";
   document.getElementById('meaningInput').value = "";
   save();
@@ -272,6 +323,31 @@ function editRow(idx) {
   }
 }
 
+function toggleSort() {
+  sortAsc = !sortAsc;
+  document.getElementById('sortBtn').innerText = `복습일순 정렬 ${sortAsc ? '▲' : '▼'}`;
+  cardData.sort((a, b) => {
+    const da = a.dueDate ?? -Infinity; // 신규 카드는 가장 시급한 것으로 취급
+    const db = b.dueDate ?? -Infinity;
+    return sortAsc ? da - db : db - da;
+  });
+  save();
+}
+
+function formatDueDate(dueDate) {
+  if (!dueDate) return { text: '신규', cls: 'new' };
+  const diffMs = dueDate - Date.now();
+  if (diffMs <= 0) return { text: '지금', cls: 'overdue' };
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 60) return { text: `${diffMin}m`, cls: '' };
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return { text: `${diffHour}h`, cls: '' };
+  const diffDay = Math.round(diffHour / 24);
+  if (diffDay < 30) return { text: `${diffDay}d`, cls: '' };
+  const diffMonth = Math.round(diffDay / 30);
+  return { text: `${diffMonth}mo`, cls: '' };
+}
+
 function renderTable() {
   const tbody = document.getElementById('tableBody');
   tbody.innerHTML = "";
@@ -291,18 +367,23 @@ function renderTable() {
     const mClass = currentMode === 1 ? 'hidden' : '';
     const bookmarkIcon = item.bookmarked ? 'bi-bookmark-fill' : 'bi-bookmark';
 
-    // 첫 번째 td에만 북마크 아이콘 추가
+    // 첫 번째 td에 북마크 아이콘 + 복습일 배지 추가
     const td1 = document.createElement('td');
     td1.className = sClass;
     td1.textContent = item.s;
     td1.onclick = function() { this.classList.remove('hidden'); };
     
-    // 북마크 아이콘 생성
     const bookmarkDiv = document.createElement('div');
     bookmarkDiv.className = 'bookmark-icon';
     bookmarkDiv.innerHTML = `<i class="bi ${bookmarkIcon}"></i>`;
     bookmarkDiv.onclick = () => toggleBookmark(idx);
     td1.appendChild(bookmarkDiv);
+
+    const due = formatDueDate(item.dueDate);
+    const dueDiv = document.createElement('div');
+    dueDiv.className = `due-badge ${due.cls}`;
+    dueDiv.textContent = due.text;
+    td1.appendChild(dueDiv);
 
     // 두 번째 td
     const td2 = document.createElement('td');
@@ -327,9 +408,9 @@ function renderTable() {
 
 function exportCSV() {
   if (cardData.length === 0) return alert("데이터가 없습니다.");
-  let csv = "\uFEFFSentence,Meaning,Bookmarked\n";
+  let csv = "\uFEFFSentence,Meaning,Bookmarked,Interval,DueDate\n";
   cardData.forEach(row => { 
-    csv += `"${row.s}","${row.m}","${row.bookmarked || false}"\n`; 
+    csv += `"${row.s}","${row.m}","${row.bookmarked || false}","${row.interval ?? ''}","${row.dueDate ?? ''}"\n`; 
   });
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -348,10 +429,15 @@ function importCSV(event) {
     const lines = text.split('\n').filter(l => l.trim() !== "").slice(1);
     const newData = lines.map(line => {
       const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+      const clean = s => s ? s.replace(/"/g, '').trim() : "";
+      const intervalStr = clean(parts[3]);
+      const dueDateStr = clean(parts[4]);
       return { 
-        s: parts[0].replace(/"/g, '').trim(), 
-        m: parts[1] ? parts[1].replace(/"/g, '').trim() : "",
-        bookmarked: parts[2] ? parts[2].replace(/"/g, '').trim() === 'true' : false
+        s: clean(parts[0]), 
+        m: clean(parts[1]),
+        bookmarked: clean(parts[2]) === 'true',
+        interval: intervalStr ? Number(intervalStr) : null,
+        dueDate: dueDateStr ? Number(dueDateStr) : null
       };
     });
     if(confirm(`${newData.length}개의 데이터를 가져오시겠습니까?`)) {
@@ -405,6 +491,20 @@ function shuffleRows() {
   }
   save();
 }
+
+function startGame() {
+  if (cardData.length === 0) return alert("등록된 카드가 없습니다.");
+  window.open('game.html', 'flashcardGame', 'width=560,height=640');
+}
+
+// game.html 팝업에서 복습 후 localStorage를 갱신하면 여기서 감지해서
+// 메인 테이블(복습일 배지 등)을 자동으로 새로고침
+window.addEventListener('storage', (e) => {
+  if (e.key === 'flashcards' && e.newValue) {
+    cardData = JSON.parse(e.newValue);
+    renderTable();
+  }
+});
 </script>
 
 </body>
