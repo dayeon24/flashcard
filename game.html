@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Flashcard Review</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  :root {
+    --primary-blue: #6DA7F2;
+    --bg-blue-light: rgba(109, 167, 242, 0.15);
+    --bad-red: #d9534f;
+    --normal-yellow: #f0ad4e;
+    --good-green: #5cb85c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Pretendard', sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: #f5f5f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+
+  .game-card {
+    background: white;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 480px;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  }
+
+  .game-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .game-progress {
+    font-size: 13px;
+    color: #999;
+    font-weight: bold;
+  }
+
+  .game-close {
+    background: none !important;
+    border: none !important;
+    color: #999;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .game-content {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    text-align: center;
+    padding: 20px 0;
+  }
+
+  .game-sentence { font-size: 19px; font-weight: 600; color: #333; }
+  .game-divider { width: 100%; border-top: 1px solid #eee; }
+  .game-meaning { font-size: 17px; color: #555; }
+
+  .game-blur {
+    filter: blur(6px);
+    user-select: none;
+  }
+
+  .reveal-btn {
+    width: 100%;
+    background: #222;
+    color: white;
+    padding: 14px;
+    border-radius: 10px;
+    font-size: 15px;
+    border: none !important;
+    cursor: pointer;
+  }
+  .reveal-btn:hover { background: #444; }
+
+  .difficulty-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+  .diff-btn {
+    flex: 1;
+    padding: 12px 0;
+    border-radius: 10px;
+    border: none !important;
+    color: white;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .diff-btn small { display: block; font-weight: normal; font-size: 11px; opacity: 0.9; }
+  .diff-bad { background: var(--bad-red); }
+  .diff-bad:hover { background: #c9302c; }
+  .diff-normal { background: var(--normal-yellow); }
+  .diff-normal:hover { background: #ec971f; }
+  .diff-good { background: var(--good-green); }
+  .diff-good:hover { background: #4cae4c; }
+
+  .game-done {
+    text-align: center;
+    font-size: 17px;
+    color: #444;
+    padding: 30px 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="game-card">
+  <div class="game-top">
+    <div class="game-progress" id="gameProgress"></div>
+    <button class="game-close" onclick="window.close()"><i class="bi bi-x-lg"></i></button>
+  </div>
+  <div class="game-content" id="gameContent">불러오는 중...</div>
+</div>
+
+<script>
+// flashcards.html과 동일한 localStorage 키를 공유
+let cardData = JSON.parse(localStorage.getItem('flashcards')) || [];
+let currentMode = Number(localStorage.getItem('flashcardMode')) || 0;
+
+// 신규 카드 기본 간격 (분 단위): [Bad, Normal-신규, Good-신규]
+// 10분, 1일, 3일
+const BASE_STAGES = [10, 1440, 4320];
+
+let gameQueue = [];
+let gamePos = 0;
+let answerRevealed = false;
+
+function formatDueDate(dueDate) {
+  if (!dueDate) return { text: '신규', cls: 'new' };
+  const diffMs = dueDate - Date.now();
+  if (diffMs <= 0) return { text: '지금', cls: 'overdue' };
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 60) return { text: `${diffMin}m`, cls: '' };
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return { text: `${diffHour}h`, cls: '' };
+  const diffDay = Math.round(diffHour / 24);
+  if (diffDay < 30) return { text: `${diffDay}d`, cls: '' };
+  const diffMonth = Math.round(diffDay / 30);
+  return { text: `${diffMonth}mo`, cls: '' };
+}
+
+function initGame() {
+  if (cardData.length === 0) {
+    document.getElementById('gameContent').innerHTML = '<div class="game-done">등록된 카드가 없습니다.</div>';
+    return;
+  }
+  // dueDate가 이른(신규 포함) 카드부터 복습하도록 정렬된 큐 생성
+  gameQueue = cardData
+    .map((c, idx) => idx)
+    .sort((a, b) => (cardData[a].dueDate ?? -Infinity) - (cardData[b].dueDate ?? -Infinity));
+  gamePos = 0;
+  loadCard();
+}
+
+// 새 카드로 넘어갈 때만 호출 — answerRevealed를 카드 시작 상태로 초기화
+function loadCard() {
+  answerRevealed = (currentMode === 0); // 둘 다 보기 모드는 처음부터 가릴 게 없음
+  renderGameCard();
+}
+
+// 화면을 다시 그리기만 함 — answerRevealed 값은 건드리지 않음
+// (이걸 건드리면 '정답 보기' 클릭 시 바로 리셋되는 버그가 생김)
+function renderGameCard() {
+  const progressEl = document.getElementById('gameProgress');
+  const contentEl = document.getElementById('gameContent');
+
+  if (gamePos >= gameQueue.length) {
+    progressEl.innerText = '';
+    contentEl.innerHTML = `<div class="game-done">🎉 오늘 복습을 모두 마쳤어요!</div>
+      <button class="reveal-btn" onclick="window.close()">닫기</button>`;
+    return;
+  }
+
+  const idx = gameQueue[gamePos];
+  const item = cardData[idx];
+
+  progressEl.innerText = `${gamePos + 1} / ${gameQueue.length}`;
+
+  const sHidden = currentMode === 2 && !answerRevealed;
+  const mHidden = currentMode === 1 && !answerRevealed;
+
+  contentEl.innerHTML = `
+    <div class="game-sentence ${sHidden ? 'game-blur' : ''}">${item.s}</div>
+    ${currentMode !== 1 || answerRevealed ? '<div class="game-divider"></div>' : ''}
+    <div class="game-meaning ${mHidden ? 'game-blur' : ''}">${item.m}</div>
+    <div id="gameActionZone" style="width:100%;"></div>
+  `;
+
+  renderGameActionZone();
+}
+
+function renderGameActionZone() {
+  const zone = document.getElementById('gameActionZone');
+  if (!answerRevealed) {
+    zone.innerHTML = `<button class="reveal-btn" onclick="revealAnswer()">정답 보기</button>`;
+  } else {
+    zone.innerHTML = `
+      <div class="difficulty-row">
+        <button class="diff-btn diff-bad" onclick="rateCard(1)">Bad<small id="badLabel"></small></button>
+        <button class="diff-btn diff-normal" onclick="rateCard(2)">Normal<small id="normalLabel"></small></button>
+        <button class="diff-btn diff-good" onclick="rateCard(3)">Good<small id="goodLabel"></small></button>
+      </div>
+    `;
+    updateDiffLabels();
+  }
+}
+
+function updateDiffLabels() {
+  const idx = gameQueue[gamePos];
+  const interval = cardData[idx].interval;
+  const badMin = BASE_STAGES[0];
+  const normalMin = interval ? interval * 2 : BASE_STAGES[1];
+  const goodMin = interval ? interval * 3 : BASE_STAGES[2];
+  document.getElementById('badLabel').innerText = formatDueDate(Date.now() + badMin * 60000).text;
+  document.getElementById('normalLabel').innerText = formatDueDate(Date.now() + normalMin * 60000).text;
+  document.getElementById('goodLabel').innerText = formatDueDate(Date.now() + goodMin * 60000).text;
+}
+
+function revealAnswer() {
+  answerRevealed = true;
+  renderGameCard();
+}
+
+function rateCard(level) {
+  const idx = gameQueue[gamePos];
+  const card = cardData[idx];
+
+  if (level === 1) {
+    card.interval = BASE_STAGES[0];
+  } else if (level === 2) {
+    card.interval = card.interval ? card.interval * 2 : BASE_STAGES[1];
+  } else if (level === 3) {
+    card.interval = card.interval ? card.interval * 3 : BASE_STAGES[2];
+  }
+  card.dueDate = Date.now() + card.interval * 60000;
+
+  // 메인 페이지(flashcards.html)와 공유하는 localStorage에 즉시 반영
+  localStorage.setItem('flashcards', JSON.stringify(cardData));
+
+  gamePos++;
+  loadCard();
+}
+
+window.onload = initGame;
+</script>
+
+</body>
+</html>
