@@ -408,9 +408,10 @@ function renderTable() {
 
 function exportCSV() {
   if (cardData.length === 0) return alert("데이터가 없습니다.");
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`; // CSV 표준: 내부 큰따옴표는 ""로 이스케이프
   let csv = "\uFEFFSentence,Meaning,Bookmarked,Interval,DueDate\n";
   cardData.forEach(row => { 
-    csv += `"${row.s}","${row.m}","${row.bookmarked || false}","${row.interval ?? ''}","${row.dueDate ?? ''}"\n`; 
+    csv += `${esc(row.s)},${esc(row.m)},${esc(row.bookmarked || false)},${esc(row.interval ?? '')},${esc(row.dueDate ?? '')}\n`; 
   });
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -420,16 +421,47 @@ function exportCSV() {
   a.click();
 }
 
+// RFC4180 방식 CSV 파서: 큰따옴표 안의 줄바꿈/쉼표/이스케이프된 ""를 올바르게 처리
+function parseCSV(text) {
+  // 앞의 BOM 제거 (내보내기 시 \uFEFF를 붙이기 때문)
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') { field += '"'; i++; }
+      else if (char === '"') { inQuotes = false; }
+      else { field += char; }
+    } else {
+      if (char === '"' && field === '') { inQuotes = true; } // 필드 맨 앞의 "만 CSV 인용부호로 인식
+      else if (char === ',') { row.push(field); field = ''; }
+      else if (char === '\r') { /* \r\n의 \r은 무시 */ }
+      else if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else { field += char; } // 필드 중간의 "는 그냥 일반 글자로 처리
+    }
+  }
+  // 마지막 필드/행 처리 (파일이 줄바꿈으로 안 끝나는 경우 대비)
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+
+  return rows.filter(r => r.some(f => f.trim() !== ''));
+}
+
 function importCSV(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
     const text = e.target.result;
-    const lines = text.split('\n').filter(l => l.trim() !== "").slice(1);
-    const newData = lines.map(line => {
-      const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-      const clean = s => s ? s.replace(/"/g, '').trim() : "";
+    const rows = parseCSV(text).slice(1); // 헤더 행 제외
+    const newData = rows.map(parts => {
+      const clean = s => (s ?? '').trim();
       const intervalStr = clean(parts[3]);
       const dueDateStr = clean(parts[4]);
       return { 
@@ -445,7 +477,7 @@ function importCSV(event) {
       save();
     }
   };
-  reader.readAsText(file);
+  reader.readAsText(file, 'utf-8');
 }
 
 // 드래그 앤 드롭 관련 함수
